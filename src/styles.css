@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ring: 0 0% 0%;
+}
+
+html, body, #root { height: 100%; }
+
+.bg-app {
+  @apply bg-[radial-gradient(80%_50%_at_50%_0%,#e8fff2_0%,transparent_60%),linear-gradient(180deg,#ffffff_0%,#f5fff8_100%)];
+}
+.dark .bg-app {
+  @apply bg-[radial-gradient(80%_50%_at_50%_0%,#062b22_0%,transparent_60%),linear-gradient(180deg,#0b1220_0%,#0a1714_100%)];
+}
+
+.container-p { @apply max-w-6xl mx-auto px-4; }
+
+.card {
+  @apply bg-white/80 dark:bg-slate-900/70 backdrop-blur border border-slate-200/60 dark:border-slate-800 rounded-2xl shadow-soft p-4;
+}
+
+.btn { @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-medium transition; }
+.btn-primary { @apply bg-forest-600 text-white hover:bg-forest-700 active:bg-forest-800; }
+.btn-outline { @apply border border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800; }
+
+.link { @apply text-forest-700 hover:text-forest-800 dark:text-mint dark:hover:text-forest-200 underline-offset-4 hover:underline; }
+
+.landing-hero-bg {
+  @apply bg-[url('https://media.istockphoto.com/id/1432690812/photo/old-wooden-dock-at-the-lake-sunset-shot.jpg?s=612x612&w=0&k=20&c=A9cpzCCO_nN2B0pCpcOGBBzr9WXooLCEOzNB4IE-KNM=')] bg-cover bg-center;
+}
