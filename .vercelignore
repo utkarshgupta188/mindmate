@@ -1,0 +1,2 @@
+# Exclude local dev artifacts from Vercel uploads
+backend/localdb.json

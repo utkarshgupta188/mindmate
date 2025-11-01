@@ -1,0 +1,49 @@
+{
+  "name": "mindmate-all-in-one",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+  "dev": "cross-env PORT=5177 VITE_API_URL=http://localhost:5177 concurrently -k -n server,client -c green,blue \"npm:server\" \"npm:client\"",
+    "client": "vite",
+    "server": "node backend/index.js",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "fast-xml-parser": "^5.3.0",
+    "firebase": "^12.5.0",
+    "framer-motion": "^11.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.460.0",
+    "node-fetch": "^3.3.2",
+    "pg": "^8.16.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "recharts": "^2.12.7",
+    "three": "^0.164.1"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/pg": "^8.15.6",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.0.1",
+    "cross-env": "^10.1.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8"
+  }
+}
