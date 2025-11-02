@@ -128,6 +128,20 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "build after yolo integration",
+			"type": "shell",
+			"command": "npm.cmd",
+			"args": [
+				"run",
+				"build"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
 		}
 	]
 }

@@ -1,4 +1,4 @@
-import { Send, Bot, AlertTriangle, HeartHandshake, PhoneCall, X, Sparkles, Volume2, Link as LinkIcon } from 'lucide-react'
+import { Send, Bot, AlertTriangle, HeartHandshake, PhoneCall, X, Sparkles, Volume2, Link as LinkIcon, Scan } from 'lucide-react'
 import { VOICE_ASSISTANT_URL } from '../config/appConfig'
 import React, { useEffect, useRef, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -19,6 +19,7 @@ import OnboardingWizard from '../components/OnboardingWizard'
 import { loadOnboarding, saveOnboarding, type OnboardingAnswers } from '../utils/onboarding'
 import { isMentalHealthRelated } from '../utils/topicGate'
 import CameraEmotion from '../components/CameraEmotion'
+import YoloDetect from '../components/YoloDetect'
 import VoiceControls from '../components/VoiceControls'
 import { mapEmotionToValenceArousal, emotionToEmoji, DeepfaceEmotion } from '../utils/emotionMap'
 import { humanizeResponse } from '../utils/textPost'
@@ -88,6 +89,7 @@ export default function Chat(){
   const [sttAutoSend, setSttAutoSend] = useState(true)
   const [voiceActive, setVoiceActive] = useState(false)
   const [cameraApiHealthy, setCameraApiHealthy] = useState<boolean | null>(null)
+  const [showYolo, setShowYolo] = useState(false)
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({ behavior:'smooth', block:'end' }) }, [msgs, typing])
   useEffect(()=>{ inputRef.current?.focus() }, [])
@@ -365,6 +367,11 @@ export default function Chat(){
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-500 text-white text-lg shadow">{headerIcon}</span>
             <div>
               <h3 className="font-semibold leading-tight">{headerName}</h3>
+          {showYolo && (
+            <div className="px-4 md:px-6 py-3 border-b border-slate-200/60 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/50">
+              <YoloDetect />
+            </div>
+          )}
               <p className="text-xs text-slate-500 dark:text-slate-400">Empathetic companion • responses may be AI-generated</p>
             </div>
           </div>
@@ -377,6 +384,15 @@ export default function Chat(){
               })
             }} onHealthChange={(h)=>setCameraApiHealthy(h)} />
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={()=> setShowYolo(v=>!v)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                title="Toggle YOLO object detection"
+              >
+                <Scan size={16} />
+                <span>YOLO</span>
+              </button>
               <VoiceControls
                 onTranscript={handleTranscript}
                 autoSend={sttAutoSend}
