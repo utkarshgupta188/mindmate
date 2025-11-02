@@ -17,3 +17,16 @@ npm run dev
 ## Auth
 
 This demo uses a simple local auth stored in your browser (see `src/context/AuthContext.tsx`). No external services are required. Do not use real passwords.
+
+## Environment
+
+Create a `.env` (or `.env.local`) in the project root to configure client settings:
+
+```bash
+VITE_API_BASE=/api
+VITE_GEMINI_MODEL=gemini-2.5-flash
+# URL where the Personal-Voice-Assistant Flask app is served
+VITE_ASSISTANT_URL=http://localhost:8001/
+```
+
+If `VITE_ASSISTANT_URL` is not set, the dashboard embed defaults to `http://localhost:8001/`.

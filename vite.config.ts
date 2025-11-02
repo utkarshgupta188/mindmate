@@ -7,7 +7,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Proxy API calls from Vite (5173) to backend
       '/api': {
         target,
         changeOrigin: true,

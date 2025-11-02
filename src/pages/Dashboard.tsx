@@ -9,17 +9,18 @@ import { useLiveTrend } from '../hooks/useLiveTrend'               // ⟵ NEW
 import { generateTrend, weeklyRows, defaultTasks } from '../utils/sampleData'
 import { useAuth } from '../context/AuthContext'
 import { videosForMood } from '../utils/youtube'
-import { HeartPulse, Activity, Youtube, Users, ShieldAlert, BadgeCheck } from 'lucide-react'
+import { HeartPulse, Activity, Youtube, Users, ShieldAlert, BadgeCheck, Bot } from 'lucide-react'
+import AssistantEmbed from '../components/AssistantEmbed'
 
 export default function Dashboard(){
-  // existing sample data (you can keep for the table + other charts)
+  
   const data = useMemo(()=>generateTrend(14), [])
   const rows = useMemo(()=>weeklyRows(), [])
   const [tasks, setTasks] = useState(defaultTasks())
   const { user, updateLovedOnes } = useAuth()
   const [lo, setLo] = useState<{name:string; whatsapp:string}[]>(user?.lovedOnes ?? [{name:'', whatsapp:''}, {name:'', whatsapp:''}])
 
-  // derive latest mood for video picks
+ 
   const latestMood = useMemo(()=>{
     const last = rows[0] ?? { mood: 0, stress: 0 }
     const delta = last.mood - last.stress
@@ -37,13 +38,13 @@ export default function Dashboard(){
     updateLovedOnes(lo.filter(l => l.name && l.whatsapp))
   }
 
-  // ====== LIVE PROGRESS WIRING ======
-  const isProfileComplete = Boolean(user) // simple toggle for demo
+
+  const isProfileComplete = Boolean(user) 
   const { points } = useLiveTrend({
     enabled: isProfileComplete,
     userId: user?.email,
-    seedZero: true,   // start from a single 0 point
-    pollMs: 5000,     // fallback polling if SSE isn’t available
+    seedZero: true,   
+    pollMs: 5000,     
   })
 
   // mood chip styles
@@ -127,7 +128,7 @@ export default function Dashboard(){
           </motion.section>
         </div>
 
-        {/* Right column: widgets, tasks, loved ones */}
+  {}
         <div className="space-y-6">
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.05 }}>
             <BreathingWidget />
@@ -194,6 +195,25 @@ export default function Dashboard(){
                 contact local emergency services immediately. In India, dial <b>112</b> or contact Tele-MANAS.
               </span>
             </p>
+          </motion.section>
+
+          {/* Personal Assistant (Flask app) */}
+          <motion.section
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: 0.14 }}
+            className="rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60 backdrop-blur p-6"
+          >
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-500 text-white shadow">
+                <Bot className="h-5 w-5" />
+              </span>
+              Personal Assistant
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+              This embeds your local assistant from the Personal-Voice-Assistant project. Make sure it’s running.
+            </p>
+            <AssistantEmbed height={420} />
           </motion.section>
         </div>
       </div>

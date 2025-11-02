@@ -2,8 +2,10 @@ import React from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { MessageCircleHeart, Sparkles, Gamepad2, BookOpenText, HeartHandshake, ArrowRight, ShieldCheck, Clock, Lock } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 export default function Landing(){
+  const { user } = useAuth()
   // marquee items
   const ticker = [
     'Small steps, big change',
@@ -41,12 +43,14 @@ export default function Landing(){
               Start a chat, explore calming activities, or read positive updates. With consent, loved‑one alerts can be enabled.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Link to="/chat/adem" className="btn btn-primary inline-flex items-center gap-2">
+              <Link to="/chat" className="btn btn-primary inline-flex items-center gap-2">
                 <MessageCircleHeart className="h-4 w-4" /> Talk now
               </Link>
-              <Link to="/signup" className="btn btn-outline inline-flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4" /> Create account
-              </Link>
+              {!user && (
+                <Link to="/signup" className="btn btn-outline inline-flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4" /> Create account
+                </Link>
+              )}
               <Link to="/india-help" className="btn btn-outline inline-flex items-center gap-2">
                 <HeartHandshake className="h-4 w-4" /> Help
               </Link>
@@ -106,7 +110,7 @@ export default function Landing(){
         ))}
       </section>
 
-  {/* direct navigation to /chat/:bot is used now */}
+  {}
     </div>
   )
 }

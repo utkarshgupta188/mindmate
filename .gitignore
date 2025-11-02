@@ -3,6 +3,4 @@ node_modules
 .env
 .env.local
 .env.*.local
-
-# Local development database (do not commit)
 backend/localdb.json

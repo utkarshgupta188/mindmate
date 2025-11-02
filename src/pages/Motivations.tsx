@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Sparkles, Play, Shuffle, Filter, Heart, Bookmark, TrendingUp, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-
-// --- Demo content (stories + videos) ---------------------------------------
 export type Story = { id: string; name: string; text: string; img: string; category: CategoryKey }
 export type CategoryKey = 'resilience' | 'focus' | 'gratitude' | 'sleep' | 'anxiety'
 
@@ -22,16 +20,14 @@ const STORIES: Story[] = [
   { id:'malala', name: 'Malala Yousafzai', category:'resilience', text: 'She transformed pain into purpose, advocating for education with courage. Even small steps toward what matters are powerful.', img: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800&q=60' },
 ]
 
-// YouTube video IDs grouped by category
 const VIDEOS: Record<CategoryKey, string[]> = {
-  resilience: ['f1e8V5b1Y98','kZlXWp6vFdE','f9iI7D2K2zY'],
-  focus: ['LP0GxU5P5Yc','3p7lLQ4mV1Y','4EaM9y5aS4M'],
-  gratitude: ['LZkS7mQxG7g','t7HGS3k5e2g','mTo2UuJ8rqY'],
-  sleep: ['lFcSrYw-ARY','uZ3S3WQ1kN4','gI6uFPdS3Dk'],
+  resilience: ['H14bBuluwB8','hiiEeMN7vbQ','wHGqp8lz36c'],
+  focus: ['jfKfPfyJRdk','DWcJFNfaw9c','5yx6BWlEVcY'],
+  gratitude: ['itZMM5gCboo','Ukg_U3CnJWI','d4S4twjeWTs'],
+  sleep: ['1ZYbU82GVz4','jfKfPfyJRdk','DWcJFNfaw9c'],
   anxiety: ['ZToicYcHIOU','W19PdslW7iw','O-6f5wQXSu8'],
 }
 
-// --- Preference tracking (client-only + optional backend) ------------------
 function usePrefs() {
   const { user } = useAuth()
   const key = user?.email ? `prefs:${user.email}` : 'prefs:anon'
@@ -44,8 +40,6 @@ function usePrefs() {
     const next = { ...prefs, [k]: (prefs[k] || 0) + 1 }
     setPrefs(next)
     try { localStorage.setItem(key, JSON.stringify(next)) } catch {}
-
-    // Optional: fire-and-forget to backend for model training later
     fetch('/api/prefs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: user?.email, action, ...payload, ts: Date.now() })
@@ -55,7 +49,6 @@ function usePrefs() {
   return { prefs, record }
 }
 
-// --- Utilities --------------------------------------------------------------
 function shuffle<T>(arr: T[]) {
   const a = [...arr]
   for (let i = a.length - 1; i > 0; i--) {
@@ -66,15 +59,12 @@ function shuffle<T>(arr: T[]) {
   }
   return a
 }
-
-// --- Component --------------------------------------------------------------
 export default function Motivations(){
   const { prefs, record } = usePrefs()
   const [active, setActive] = useState<CategoryKey>('resilience')
   const [autoRotate, setAutoRotate] = useState(true)
   const rotateRef = useRef<number | null>(null)
 
-  // rotate categories every 20s (can be toggled off)
   useEffect(() => {
     if (!autoRotate) { if (rotateRef.current) window.clearInterval(rotateRef.current); return }
     rotateRef.current = window.setInterval(() => {
@@ -86,11 +76,9 @@ export default function Motivations(){
     return () => { if (rotateRef.current) window.clearInterval(rotateRef.current) }
   }, [active, autoRotate])
 
-  // compute recommendations: mix of stories + 3 videos for active category
   const stories = useMemo(() => shuffle(STORIES.filter(s => s.category === active)), [active])
   const videos = useMemo(() => (VIDEOS[active] || []).slice(0,3), [active])
 
-  // derive a simple personalized hint from prefs
   const topCat = useMemo(() => {
     const entries = Object.entries(prefs).filter(([k]) => k.startsWith('cat:'))
     if (!entries.length) return null
@@ -103,7 +91,6 @@ export default function Motivations(){
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <motion.section
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -133,7 +120,6 @@ export default function Motivations(){
           </div>
         </div>
 
-        {/* Category pills */}
         <div className="mt-4 flex flex-wrap gap-2">
           {(Object.keys(CATEGORIES) as CategoryKey[]).map((key)=> (
             <button
@@ -147,7 +133,6 @@ export default function Motivations(){
         </div>
       </motion.section>
 
-      {/* Grid: Stories */}
       <AnimatePresence mode="popLayout">
         <motion.section
           key={`${active}-stories`}
@@ -183,7 +168,6 @@ export default function Motivations(){
         </motion.section>
       </AnimatePresence>
 
-      {/* Videos */}
       <motion.section
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -199,27 +183,30 @@ export default function Motivations(){
             <div key={id} className="rounded-2xl overflow-hidden border border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60">
               <iframe
                 className="w-full aspect-video"
-                src={`https://www.youtube.com/embed/${id}`}
+                src={`https://www.youtube-nocookie.com/embed/${id}?rel=0`}
                 title="Motivation video"
+                loading="lazy"
+                referrerPolicy="strict-origin-when-cross-origin"
                 allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
                 onLoad={()=>record('play', { category: active, videoId: id })}
               />
+              <div className="px-3 py-2 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between">
+                <span>Having trouble? Open on YouTube</span>
+                <a className="underline" target="_blank" rel="noopener noreferrer" href={`https://www.youtube.com/watch?v=${id}`}>Open</a>
+              </div>
             </div>
           ))}
         </div>
       </motion.section>
 
-      {/* Confirmation toast (demo) */}
       <ToastAnchor />
     </div>
   )
 }
 
-// --- Tiny toast system (optional visual feedback) --------------------------
 function ToastAnchor(){
   const [msg, setMsg] = useState<string | null>(null)
-  // expose a simple global for demo: window.motivateToast('Saved!')
   useEffect(()=>{
     ;(window as any).motivateToast = (m:string)=>{ setMsg(m); setTimeout(()=>setMsg(null), 1500) }
   }, [])

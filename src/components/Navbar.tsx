@@ -24,7 +24,11 @@ export default function Navbar() {
           <NavLink className={linkClass} to="/news">News</NavLink>
           <NavLink className={linkClass} to="/india-help">India Help</NavLink>
           <NavLink className={linkClass} to="/games">Games</NavLink>
-          {user && <NavLink className={linkClass} to="/dashboard">Dashboard</NavLink>}
+          <NavLink className={linkClass} to="/reports">Reports</NavLink>
+          {user && <>
+            <NavLink className={linkClass} to="/dashboard">Dashboard</NavLink>
+            <NavLink className={linkClass} to="/profile">Profile</NavLink>
+          </>}
         </nav>
         <div className="flex items-center gap-2">
           <BotLauncher />
