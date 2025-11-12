@@ -61,6 +61,8 @@ const smartSuggestions = [
 ]
 
 export default function Chat(){
+  const YOLO_ENABLED = ((import.meta as any).env?.VITE_ENABLE_YOLO === 'true')
+  const TALK_ENABLED = ((import.meta as any).env?.VITE_ENABLE_TALK === 'true')
   const navigate = useNavigate()
   const initialOnb = loadOnboarding()
   const [input, setInput] = useState('')
@@ -367,7 +369,7 @@ export default function Chat(){
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-500 text-white text-lg shadow">{headerIcon}</span>
             <div>
               <h3 className="font-semibold leading-tight">{headerName}</h3>
-          {showYolo && (
+          {YOLO_ENABLED && showYolo && (
             <div className="px-4 md:px-6 py-3 border-b border-slate-200/60 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/50">
               <YoloDetect />
             </div>
@@ -384,22 +386,26 @@ export default function Chat(){
               })
             }} onHealthChange={(h)=>setCameraApiHealthy(h)} />
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={()=> setShowYolo(v=>!v)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                title="Toggle YOLO object detection"
-              >
-                <Scan size={16} />
-                <span>YOLO</span>
-              </button>
-              <VoiceControls
-                onTranscript={handleTranscript}
-                autoSend={sttAutoSend}
-                lang={navigator.language || 'en-US'}
-                onStart={()=>{ setVoiceActive(true); setTtsEnabled(true) }}
-                onStop={()=>setVoiceActive(false)}
-              />
+              {YOLO_ENABLED && (
+                <button
+                  type="button"
+                  onClick={()=> setShowYolo(v=>!v)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  title="Toggle YOLO object detection"
+                >
+                  <Scan size={16} />
+                  <span>YOLO</span>
+                </button>
+              )}
+              {TALK_ENABLED && (
+                <VoiceControls
+                  onTranscript={handleTranscript}
+                  autoSend={sttAutoSend}
+                  lang={navigator.language || 'en-US'}
+                  onStart={()=>{ setVoiceActive(true); setTtsEnabled(true) }}
+                  onStop={()=>setVoiceActive(false)}
+                />
+              )}
               <a
                 href={VOICE_ASSISTANT_URL}
                 target="_blank"

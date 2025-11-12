@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
+import { signInWithPopup } from 'firebase/auth'
+import { auth, googleProvider, githubProvider } from '../config/firebase'
 
 type LovedOne = { name: string; whatsapp: string }
-type User = { email: string; name: string; lovedOnes: LovedOne[] }
+type User = { email: string; name: string; lovedOnes: LovedOne[]; provider?: 'password' | 'google' | 'github' }
 
 type Ctx = {
   user: User | null
@@ -91,18 +93,66 @@ export function AuthProvider({ children }:{ children: React.ReactNode }){
     setUser(data.user)
   }
 
+  const allowDemoAuth = import.meta.env.VITE_ALLOW_DEMO_AUTH === 'true'
+
   async function loginWithGoogle(){
-    // Local demo social login: create a placeholder user
-    const u: User = { email: 'demo-google@local', name: 'Google User', lovedOnes: [] }
-    setUser(u)
-    localStorage.setItem(LS_KEY, JSON.stringify(u))
+    if (allowDemoAuth){
+      const u: User = { email: 'demo-google@local', name: 'Google User', lovedOnes: [], provider: 'google' }
+      setUser(u)
+      localStorage.setItem(LS_KEY, JSON.stringify(u))
+      return
+    }
+    try {
+      const cred = await signInWithPopup(auth, googleProvider)
+      const firebaseUser = cred.user
+      const u: User = {
+        email: firebaseUser.email || 'unknown-google-user',
+        name: firebaseUser.displayName || 'Google User',
+        lovedOnes: [],
+        provider: 'google'
+      }
+      // Note: backend doesn't yet accept Firebase ID tokens, so we only persist local profile.
+      setUser(u)
+      localStorage.setItem(LS_KEY, JSON.stringify(u))
+    } catch (e){
+      if (allowDemoAuth){
+        // fallback to demo if sign-in fails
+        const u: User = { email: 'demo-google@local', name: 'Google User', lovedOnes: [], provider: 'google' }
+        setUser(u)
+        localStorage.setItem(LS_KEY, JSON.stringify(u))
+      } else {
+        throw e
+      }
+    }
   }
 
   async function loginWithGithub(){
-    // Local demo social login: create a placeholder user
-    const u: User = { email: 'demo-github@local', name: 'GitHub User', lovedOnes: [] }
-    setUser(u)
-    localStorage.setItem(LS_KEY, JSON.stringify(u))
+    if (allowDemoAuth){
+      const u: User = { email: 'demo-github@local', name: 'GitHub User', lovedOnes: [], provider: 'github' }
+      setUser(u)
+      localStorage.setItem(LS_KEY, JSON.stringify(u))
+      return
+    }
+    try {
+      const cred = await signInWithPopup(auth, githubProvider)
+      const firebaseUser = cred.user
+      const u: User = {
+        email: firebaseUser.email || 'unknown-github-user',
+        name: firebaseUser.displayName || (firebaseUser.email?.split('@')[0] ?? 'GitHub User'),
+        lovedOnes: [],
+        provider: 'github'
+      }
+      setUser(u)
+      localStorage.setItem(LS_KEY, JSON.stringify(u))
+    } catch (e){
+      if (allowDemoAuth){
+        const u: User = { email: 'demo-github@local', name: 'GitHub User', lovedOnes: [], provider: 'github' }
+        setUser(u)
+        localStorage.setItem(LS_KEY, JSON.stringify(u))
+      } else {
+        throw e
+      }
+    }
   }
 
   function logout(){ setUser(null); localStorage.removeItem(LS_KEY); localStorage.removeItem(TOKEN_KEY) }

@@ -4,3 +4,7 @@ node_modules
 .env.local
 .env.*.local
 backend/localdb.json
+yolo-server/*.pt
+yolo-server/*.pth
+yolo-server/*.onnx
+yolo-server/weights/
