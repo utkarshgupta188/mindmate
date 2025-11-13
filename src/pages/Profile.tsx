@@ -1,70 +1,115 @@
+// src/pages/Profile.tsx
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import ProfileImageUploader from '../components/ProfileImageUploader'
+import { loadProfile, SavedProfile } from '../utils/profileUtils'
 
-type SavedProfile = { name?: string; bio?: string; image?: string }
+export default function Profile(): JSX.Element {
+  const { user } = useAuth() as { user?: { email?: string; name?: string; username?: string } | null }
+  const email = user?.email
+  const [profile, setProfile] = useState<SavedProfile | null>(null)
+  const navigate = useNavigate()
 
-function storageKey(email?: string){
-  return email ? `profile:${email}` : 'profile:anon'
-}
-
-export default function Profile(){
-  const { user } = useAuth()
-  const key = storageKey(user?.email || undefined)
-  const [profile, setProfile] = useState<SavedProfile>({})
-
-  useEffect(()=>{
-    try {
-      const raw = localStorage.getItem(key)
-      if (raw) setProfile(JSON.parse(raw))
-    } catch {}
-  }, [key])
-
-  function save(){
-    try {
-      localStorage.setItem(key, JSON.stringify(profile))
-      ;(window as any).motivateToast?.('Profile saved')
-    } catch {}
-  }
+  useEffect(() => {
+    let mounted = true
+    async function fetchProfile() {
+      try {
+        const token = localStorage.getItem('mindmate_user_token')
+        if (token) {
+          const res = await fetch('/api/auth/profile', { headers: { Authorization: `Bearer ${token}` } })
+          if (res.ok) {
+            const data = await res.json()
+            if (mounted) setProfile(data?.profile || null)
+            return
+          }
+        }
+      } catch {}
+      const p = loadProfile(email)
+      if (mounted && p) setProfile(p)
+      else if (mounted) {
+        setProfile({
+          name: user?.name || '',
+          username: (user as any)?.username || '',
+          email: user?.email || '',
+        })
+      }
+    }
+    fetchProfile()
+    return () => { mounted = false }
+  }, [email, user])
 
   return (
     <div className="space-y-6">
-      <div className="card">
-        <h2 className="text-xl font-semibold">Your profile</h2>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Update your display name, a short bio, and profile image (optional).</p>
+      <div className="card flex flex-col md:flex-row items-start gap-6">
+        <div className="flex items-center gap-4">
+          <div className="w-28 h-28 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+            {profile?.image ? (
+              <img src={profile.image} alt={profile.name || 'Profile'} className="w-full h-full object-cover" />
+            ) : (
+              <div className="text-slate-400">No photo</div>
+            )}
+          </div>
+        </div>
 
-        <div className="mt-4 grid md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium">Display name</label>
-            <input
-              aria-label="display name"
-              title="display name"
-              placeholder="Your name"
-              className="w-full mt-1 rounded-xl border px-3 py-2 bg-white text-slate-900 placeholder-slate-500 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-400 border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-forest-500/40"
-              value={profile.name||user?.name||''}
-              onChange={(e)=>setProfile(p=>({...p, name: e.target.value}))}
-            />
+        <div className="flex-1">
+          <div className="flex items-start gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold">{profile?.name || 'Your name'}</h2>
+              <div className="text-sm text-slate-500">@{profile?.username || 'username'}</div>
+            </div>
 
-            <label className="block text-sm font-medium mt-3">Bio</label>
-            <textarea
-              aria-label="bio"
-              title="bio"
-              placeholder="A short bio (optional)"
-              className="w-full mt-1 rounded-xl border px-3 py-2 bg-white text-slate-900 placeholder-slate-500 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-400 border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-forest-500/40"
-              rows={4}
-              value={profile.bio||''}
-              onChange={(e)=>setProfile(p=>({...p, bio: e.target.value}))}
-            />
-
-            <div className="mt-4 flex items-center gap-2">
-              <button onClick={save} className="px-4 py-2 rounded-xl bg-forest-600 text-white">Save profile</button>
-              <button onClick={()=>{ setProfile({}); localStorage.removeItem(key) }} className="px-4 py-2 rounded-xl border">Reset</button>
+            <div className="ml-auto">
+              <button
+                className="px-3 py-2 rounded-xl border flex items-center gap-2"
+                onClick={() => navigate('/profile/edit')}
+                aria-label="Edit profile"
+                title="Edit profile (settings)"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="opacity-90">
+                  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06A2 2 0 0 1 2.28 17.4l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82L3.21 2.28A2 2 0 0 1 6.04.45l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V0a2 2 0 0 1 4 0v.09c.06.6.44 1.1 1 1.51h.06a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.06c.41.56 1 1 1.51 1H24a2 2 0 0 1 0 4h-.09c-.5 0-1.1.44-1.51 1z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <span className="text-sm">Edit</span>
+              </button>
             </div>
           </div>
 
-          <div>
-            <ProfileImageUploader initial={profile.image||null} onChange={(url: string | null)=>setProfile(p=>({...p, image: url||undefined}))} />
-            {profile.image && <p className="text-xs text-slate-500 mt-2">Uploaded image is stored in your browser only.</p>}
+          <p className="mt-3 text-slate-600 dark:text-slate-400">{profile?.bio || 'A short bio will appear here.'}</p>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <div className="text-xs text-slate-500">Contact</div>
+              <div className="mt-1 text-sm">
+                {profile?.email ? <a href={`mailto:${profile.email}`}>📧 {profile.email}</a> : <div className="text-xs text-slate-400">Email not set</div>}
+                {profile?.phone ? <div className="mt-1">📞 {profile.phone}</div> : <div className="text-xs text-slate-400">Phone not set</div>}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs text-slate-500">Parental / Loved ones</div>
+              <div className="mt-1 text-sm">
+                {profile?.parentalContact && profile.parentalContact.length ? (
+                  profile.parentalContact.map((c: { name?: string; email?: string; phone?: string }, i: number) => (
+                    <div key={i} className="mb-1">
+                      <div className="font-medium">{c.name || 'Contact'}</div>
+                      <div className="text-xs text-slate-500">{c.email || c.phone || '-'}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-xs text-slate-400">Not configured</div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs text-slate-500">Instagram</div>
+              <div className="mt-1 text-sm">{profile?.instagram ? <a href={`https://instagram.com/${profile.instagram}`} target="_blank" rel="noreferrer">@{profile.instagram}</a> : <span className="text-xs text-slate-400">Not set</span>}</div>
+            </div>
+
+            <div>
+              <div className="text-xs text-slate-500">Facebook</div>
+              <div className="mt-1 text-sm">{profile?.facebook ? <a href={`https://facebook.com/${profile.facebook}`} target="_blank" rel="noreferrer">{profile.facebook}</a> : <span className="text-xs text-slate-400">Not set</span>}</div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,17 +1,16 @@
+// src/pages/Signup.tsx
 import React, { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Eye, EyeOff, ShieldCheck, FileText, Info, CheckCircle2, Loader2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { saveProfile } from '../utils/profileUtils'
 
-// Types ----------------------------------------------------------------------
 type Loved = { name: string; email: string; mobile: string }
 
-// Helpers --------------------------------------------------------------------
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i
-const e164Re = /^\+[1-9]\d{6,14}$/ // E.164 basic validation (e.g., +9199...)
+const e164Re = /^\+[1-9]\d{6,14}$/
 
-function strength(pw: string){
+function strength(pw: string) {
   let s = 0
   if (pw.length >= 8) s++
   if (/[A-Z]/.test(pw)) s++
@@ -21,7 +20,7 @@ function strength(pw: string){
   return Math.min(s, 4)
 }
 
-export default function Signup(){
+export default function Signup() {
   const { signup, loginWithGithub, loginWithGoogle } = useAuth()
   const [name, setName] = useState('')
   const [username, setUsername] = useState('')
@@ -55,16 +54,10 @@ export default function Signup(){
 
     try {
       setLoading(true)
-      // Format loved ones for API (convert mobile to whatsapp field)
       const lovedOnesForAPI = loved
         .filter(l => l.name || l.email || l.mobile)
-        .map(l => ({
-          name: l.name || '',
-          email: l.email || '',
-          whatsapp: l.mobile || ''
-        }))
-      
-      // Call signup with loved ones
+        .map(l => ({ name: l.name || '', email: l.email || '', whatsapp: l.mobile || '' }))
+
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -77,27 +70,38 @@ export default function Signup(){
       })
 
       if (!response.ok) {
-        const error = await response.json()
+        const error = await response.json().catch(()=>({}))
         throw new Error(error.error || 'Signup failed')
       }
 
       const data = await response.json()
-      
-      // Store token
+
+      // Store token & user object locally
       localStorage.setItem('mindmate_user_token', data.token)
       localStorage.setItem('mindmate_user', JSON.stringify(data.user))
-      
-      // The AuthContext will handle the user state update
-      // For now, we'll let it handle via the token check
+
+      // Save an initial profile in localStorage for quick population of /profile
+      const initialProfile = {
+        name: name || username || data.user?.name || '',
+        username: username || (data.user && (data.user.username || '')),
+        email: data.user?.email || email,
+        phone: mobile || '',
+        bio: '',
+        image: '',
+        parentalContact: lovedOnesForAPI.map((l: any) => ({ name: l.name, email: l.email, phone: l.whatsapp || '' })),
+        instagram: '',
+        facebook: '',
+      }
+      saveProfile(data.user?.email || email, initialProfile)
+
+      // navigate to dashboard
       window.location.href = '/dashboard'
     } catch (e: any) {
       setError(e?.message || 'Signup failed. Please try again.')
-      // Also try the signup function from AuthContext as fallback
+      // fallback attempt via AuthContext.signup (optional)
       try {
         await signup(email, password, name || username || email)
-      } catch (fallbackError: any) {
-        // Error already set above
-      }
+      } catch {}
     } finally {
       setLoading(false)
     }
@@ -105,15 +109,9 @@ export default function Signup(){
 
   return (
     <div className="relative max-w-3xl mx-auto">
-      {/* ambient gradient */}
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60rem_40rem_at_120%_-10%,theme(colors.indigo.300/15),transparent),radial-gradient(60rem_40rem_at_-10%_0%,theme(colors.cyan.300/12),transparent)]" />
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60rem_40rem_at_120%-10%,theme(colors.indigo.300/15),transparent),radial-gradient(60rem_40rem_at-10%_0%,theme(colors.cyan.300/12),transparent)]" />
 
-      <motion.section
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-        className="card rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60 backdrop-blur p-6"
-      >
+      <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="card rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60 backdrop-blur p-6">
         <div className="flex items-start gap-3 mb-4">
           <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-500 text-white shadow">
             <ShieldCheck className="h-5 w-5"/>
@@ -124,9 +122,7 @@ export default function Signup(){
           </div>
         </div>
 
-        {/* Local demo signup only */}
         <form onSubmit={onSubmit} className="space-y-5">
-          {/* Identity */}
           <div className="grid md:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium" htmlFor="full-name">Full name</label>
@@ -138,7 +134,6 @@ export default function Signup(){
             </div>
           </div>
 
-          {/* Contact */}
           <div className="grid md:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium" htmlFor="email">Email</label>
@@ -150,7 +145,6 @@ export default function Signup(){
             </div>
           </div>
 
-          {/* Password */}
           <div>
             <label className="text-xs font-medium" htmlFor="pw">Password</label>
             <div className="mt-1 relative">
@@ -159,49 +153,32 @@ export default function Signup(){
                 {showPw ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
               </button>
             </div>
-            {/* strength bar */}
             <div className="mt-2 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
-              <div className={`h-full transition-all ${pwScore>=1?'bg-rose-500':''}`} style={{ width: `${Math.max(8, pwScore*25)}%` }} />
+              <div className={`h-full transition-all ${pwScore>=1?'bg-rose-500':''}`}
+                   style={{ width: `${Math.max(8, pwScore*25)}%` }} />
             </div>
             <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{pwHints[pwScore]}</p>
           </div>
 
-          {/* Loved ones */}
           <div className="rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-4">
-            <h3 className="font-semibold mb-2">Loved‑one contacts (Parent Control)</h3>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">Add up to two trusted recipients for monthly summaries and urgent alerts (with your consent).</p>
+            <h3 className="font-semibold mb-2">Loved-one contacts (Parental/Loved-one)</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">Add up to two trusted recipients for summaries and urgent alerts (with your consent).</p>
             <div className="grid md:grid-cols-2 gap-3">
               {loved.map((l, i)=> (
                 <div key={i} className="space-y-2">
-                  <input
-                    className="w-full border rounded-xl px-3 py-2 bg-white/70 dark:bg-slate-900/50"
-                    placeholder="Name"
-                    value={l.name}
-                    onChange={e=> setLoved(prev => prev.map((it, idx)=> idx===i ? { ...it, name: e.target.value } : it))}
-                  />
-                  <input
-                    className="w-full border rounded-xl px-3 py-2 bg-white/70 dark:bg-slate-900/50"
-                    placeholder="Email"
-                    value={l.email}
-                    onChange={e=> setLoved(prev => prev.map((it, idx)=> idx===i ? { ...it, email: e.target.value } : it))}
-                  />
-                  <input
-                    className="w-full border rounded-xl px-3 py-2 bg-white/70 dark:bg-slate-900/50"
-                    placeholder="Mobile (+91•••)"
-                    value={l.mobile}
-                    onChange={e=> setLoved(prev => prev.map((it, idx)=> idx===i ? { ...it, mobile: e.target.value } : it))}
-                  />
+                  <input className="w-full border rounded-xl px-3 py-2 bg-white/70 dark:bg-slate-900/50" placeholder="Name" value={l.name} onChange={e=> setLoved(prev => prev.map((it, idx)=> idx===i ? { ...it, name: e.target.value } : it))} />
+                  <input className="w-full border rounded-xl px-3 py-2 bg-white/70 dark:bg-slate-900/50" placeholder="Email" value={l.email} onChange={e=> setLoved(prev => prev.map((it, idx)=> idx===i ? { ...it, email: e.target.value } : it))} />
+                  <input className="w-full border rounded-xl px-3 py-2 bg-white/70 dark:bg-slate-900/50" placeholder="Mobile (+91•••)" value={l.mobile} onChange={e=> setLoved(prev => prev.map((it, idx)=> idx===i ? { ...it, mobile: e.target.value } : it))} />
                 </div>
               ))}
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">By default, monthly wellbeing summaries are prepared for you to share. Automated sending and crisis alerts require explicit consent and a verified phone/API.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">By default, summaries are prepared for you to review. Nothing is sent automatically without explicit opt-in and verification.</p>
           </div>
 
-          {/* Consent */}
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={agree} onChange={e=>setAgree(e.target.checked)} className="mt-1" />
             <span>
-              I agree to the <button type="button" className="underline" onClick={()=>setShowTerms(true)}>Terms & Consent</button> and understand this is a wellness demo, not a medical device. For emergencies in India, call <b>112</b> or visit official resources.
+              I agree to the <button type="button" className="underline" onClick={()=>setShowTerms(true)}>Terms & Consent</button> and understand this is a wellness demo, not a medical device. For emergencies in India, call <b>112</b>.
             </span>
           </label>
 
@@ -220,22 +197,15 @@ export default function Signup(){
           <div className="h-px bg-slate-200 dark:bg-slate-800 flex-1"/>
         </div>
 
-        <button onClick={async()=>{
-          setError(null)
-          try { await loginWithGithub() } catch (e:any){ setError(e.message || 'GitHub sign-in failed') }
-        }} className="w-full px-3 py-2 rounded-xl border btn-outline mb-2">Continue with GitHub</button>
+        <button onClick={async()=>{ setError(null); try { await loginWithGithub() } catch (e:any){ setError(e.message || 'GitHub sign-in failed') } }} className="w-full px-3 py-2 rounded-xl border btn-outline mb-2">Continue with GitHub</button>
 
-        <button onClick={async()=>{
-          setError(null)
-          try { await loginWithGoogle() } catch (e:any){ setError(e.message || 'Google sign-in failed') }
-        }} className="w-full px-3 py-2 rounded-xl border btn-outline">Continue with Google</button>
+        <button onClick={async()=>{ setError(null); try { await loginWithGoogle() } catch (e:any){ setError(e.message || 'Google sign-in failed') } }} className="w-full px-3 py-2 rounded-xl border btn-outline">Continue with Google</button>
 
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">
           You can create an account with email above or continue with GitHub/Google (via Firebase). This is a demo — not a medical device.
         </p>
       </motion.section>
 
-      {/* Terms & Consent Modal */}
       <AnimatePresence>
         {showTerms && (
           <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
@@ -245,12 +215,10 @@ export default function Signup(){
                 <h3 className="font-semibold">Terms & Consent</h3>
               </div>
               <div className="prose prose-sm dark:prose-invert max-h-[60vh] overflow-y-auto">
-                <p><b>Purpose.</b> MindMate is an educational wellness demo that offers self‑help content (breathing, grounding, journaling prompts) and mood tracking. It does not provide clinical diagnosis or treatment.</p>
-                <p><b>Privacy.</b> Your profile data stays private by default. You control if, when, and what to share with loved ones. We may store minimal technical logs to improve stability.</p>
-                <p><b>Loved‑one summaries.</b> If you enable summaries, drafts will be prepared for you to review and send. No automated sending occurs without explicit opt‑in and phone/API verification.</p>
-                <p><b>Crisis.</b> If you indicate distress or self‑harm risk, the app can surface quick‑access options (dial 112 in India, contact Tele‑MANAS) and your saved contacts. The app will <i>not</i> contact anyone automatically.</p>
-                <p><b>Data use.</b> Aggregated, de‑identified analytics may be used to improve the experience. You can request deletion of your account data.</p>
-                <p><b>Age.</b> You confirm you are at least 16, or have guardian permission as required by local law.</p>
+                <p><b>Purpose.</b> MindMate is an educational wellness demo that offers self-help content and mood tracking. It does not provide clinical diagnosis or treatment.</p>
+                <p><b>Privacy.</b> Your profile data stays private by default. You control if, when, and what to share with loved ones.</p>
+                <p><b>Loved-one summaries.</b> If you enable summaries, drafts will be prepared. No automated sending occurs without explicit opt-in.</p>
+                <p><b>Crisis.</b> If you indicate distress the app surfaces quick options (dial 112 in India) and saved contacts. The app will not contact anyone automatically.</p>
                 <p><b>Acceptance.</b> By checking “I agree”, you consent to these terms.</p>
               </div>
               <div className="mt-3 flex justify-end gap-2">
@@ -261,8 +229,6 @@ export default function Signup(){
           </motion.div>
         )}
       </AnimatePresence>
-
-      <div className="sr-only">Signup form with validation, password strength meter, and Terms & Consent modal.</div>
     </div>
   )
 }

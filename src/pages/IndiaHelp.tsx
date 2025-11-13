@@ -33,7 +33,7 @@ export default function IndiaHelp() {
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-500 text-white shadow">
                 <ShieldCheck className="h-5 w-5" />
               </span>
-              India — Official Mental Health Support
+              Government Help — Official Mental Health Support
             </h2>
             <p className="mt-2 text-sm md:text-base text-slate-600 dark:text-slate-400">
               Verified Government of India resources you can contact directly. Services are free and available 24×7.
@@ -86,7 +86,11 @@ export default function IndiaHelp() {
               <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800">
                 <Phone className="h-3.5 w-3.5" />
               </span>
-              Call <b className="font-semibold">14416</b> (all‑India)
+              Call{' '}
+              <a href="tel:14416" className="font-semibold underline underline-offset-2 hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
+                14416
+              </a>{' '}
+              (all‑India)
               <button
                 type="button"
                 onClick={(e) => {
@@ -104,7 +108,10 @@ export default function IndiaHelp() {
               <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800">
                 <Phone className="h-3.5 w-3.5" />
               </span>
-              Alternate toll‑free <b className="font-semibold">1800‑891‑4416</b>
+              Alternate toll‑free{' '}
+              <a href="tel:18008914416" className="font-semibold underline underline-offset-2 hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
+                1800‑891‑4416
+              </a>
               <button
                 type="button"
                 onClick={(e) => {

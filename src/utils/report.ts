@@ -1,14 +1,25 @@
 // Conversation report generator using Gemini structured JSON responses
 // Falls back to a lightweight heuristic if no API key is configured or API fails
 
-export type ConversationReport = {
+export type StressPoint = {
+  t: number      // timestamp in ms
+  value: number  // stress 0–100
+  source?: string
+}
+
+// Extend ConversationReport to include time-series
+export interface ConversationReport {
+  stressLevel: string
   natureSummary: string
-  stressLevel: string // 'Low' | 'Moderate' | 'High' (model may return variants; we'll display as-is)
-  keyProblems: string[]
   thinkingPatterns: string
+  keyProblems: string[]
   generalReflection: string
   wellnessRecommendations: string
+  startedAt?: number
+  endedAt?: number
+  points?: StressPoint[]    // ← new field for chart connection
 }
+
 
 const REPORT_MODEL = (import.meta as any).env?.VITE_GEMINI_REPORT_MODEL || (import.meta as any).env?.VITE_GEMINI_MODEL || 'gemini-2.5-flash'
 const API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY as string | undefined

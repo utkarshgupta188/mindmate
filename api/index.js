@@ -5,14 +5,17 @@ import { newsRouter } from '../backend/newsRouter.js'
 import { sentimentRouter } from '../backend/sentimentRouter.js'
 import { authRouter } from '../backend/authRouter.js'
 import { emailRouter } from '../backend/emailRouter.js'
-import { initDatabase } from '../backend/database.js'
+import { initDatabase, getDbMode } from '../backend/database.js'
 
 // Create a single Express app to handle all /api/* routes
 const app = express()
 app.use(cors())
 app.use(express.json({ limit: '15mb' }))
 
-app.get('/api/health', (_, res) => res.json({ ok: true, message: 'Serverless API healthy ✅' }))
+app.get('/api/health', (_, res) => {
+  const mode = getDbMode()
+  res.json({ ok: true, message: 'Serverless API healthy ✅', db: { usingPostgres: mode.usingPostgres, localPath: mode.DB_PATH } })
+})
 app.use('/api/news', newsRouter)
 app.use('/api/sentiment', sentimentRouter)
 app.use('/api/auth', authRouter)

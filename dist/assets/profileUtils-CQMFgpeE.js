@@ -1,0 +1,1 @@
+function t(r){return r?`profile:${r}`:"profile:anon"}function n(r){try{const e=localStorage.getItem(t(r));return e?JSON.parse(e):null}catch(e){return console.warn("loadProfile failed",e),null}}function l(r,e){try{return localStorage.setItem(t(r),JSON.stringify(e)),!0}catch(o){return console.warn("saveProfile failed",o),!1}}export{n as l,l as s};

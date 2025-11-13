@@ -2,7 +2,8 @@
 import express from 'express'
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
-import { UserQueries, LovedOnesQueries, initDatabase } from './database.js'
+import { UserQueries, LovedOnesQueries, ProfileQueries, initDatabase, pool } from './database.js'
+import { verifyFirebaseIdToken, isFirebaseAdminReady } from './firebaseAdmin.js'
 
 const router = express.Router()
 
@@ -25,6 +26,63 @@ const JWT_SECRET = process.env.AUTH_JWT_SECRET || 'your-secret-key-change-in-pro
 function generateToken(userId, email) {
   return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '7d' })
 }
+
+/**
+ * Exchange Firebase ID token (Google/GitHub login) for backend JWT
+ * POST /api/auth/firebase
+ * Body: { idToken }
+ */
+router.post('/firebase', async (req, res) => {
+  try {
+    await ensureDbInitialized()
+
+    if (!isFirebaseAdminReady()) {
+      return res.status(501).json({ error: 'Firebase verification not configured on server' })
+    }
+
+    const { idToken } = req.body || {}
+    if (!idToken) return res.status(400).json({ error: 'idToken is required' })
+
+    let decoded
+    try {
+      decoded = await verifyFirebaseIdToken(idToken)
+    } catch (e) {
+      return res.status(401).json({ error: 'Invalid Firebase token' })
+    }
+
+    const email = (decoded.email || '').toLowerCase()
+    const name = decoded.name || decoded.email?.split('@')[0] || 'User'
+    if (!email) return res.status(400).json({ error: 'Firebase token missing email' })
+
+    // Ensure user exists
+    let user = await UserQueries.findByEmail(email)
+    if (!user) {
+      // create with a random password hash (not used)
+      const randomPass = await bcrypt.hash('firebase:' + decoded.uid, 10)
+      user = await UserQueries.create(email, randomPass, name)
+    } else if (name && user.name !== name) {
+      // keep display name in sync with Firebase profile
+      try { await UserQueries.updateName(user.id, name) } catch {}
+      // refresh user object minimally
+      user = { ...user, name }
+    }
+
+    const token = generateToken(user.id, user.email)
+    const lovedOnes = await LovedOnesQueries.findByUserId(user.id)
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        lovedOnes: (lovedOnes || []).map(lo => ({ name: lo.name, email: lo.email, whatsapp: lo.whatsapp }))
+      },
+      token
+    })
+  } catch (error) {
+    console.error('Firebase exchange error:', error)
+    res.status(500).json({ error: 'Failed to exchange Firebase token' })
+  }
+})
 
 /**
  * Register new user
@@ -244,6 +302,127 @@ router.put('/loved-ones', async (req, res) => {
   } catch (error) {
     console.error('Update loved ones error:', error)
     res.status(500).json({ error: 'Failed to update loved ones' })
+  }
+})
+
+/**
+ * Get current user's profile
+ * GET /api/auth/profile
+ * Headers: Authorization: Bearer <token>
+ */
+router.get('/profile', async (req, res) => {
+  try {
+    await ensureDbInitialized()
+
+    const authHeader = req.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' })
+    }
+
+    const token = authHeader.substring(7)
+    let decoded
+    try {
+      decoded = jwt.verify(token, JWT_SECRET)
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const user = await UserQueries.findById(decoded.userId)
+    if (!user) return res.status(404).json({ error: 'User not found' })
+
+    const profile = await ProfileQueries.findByUserId(decoded.userId)
+    const lovedOnes = await LovedOnesQueries.findByUserId(decoded.userId)
+
+    res.json({
+      profile: {
+        name: user.name,
+        email: user.email,
+        username: profile?.username || '',
+        bio: profile?.bio || '',
+        image: profile?.image || '',
+        phone: profile?.phone || '',
+        instagram: profile?.instagram || '',
+        facebook: profile?.facebook || '',
+        parentalContact: (lovedOnes || []).map(lo => ({ name: lo.name, email: lo.email, phone: lo.whatsapp }))
+      }
+    })
+  } catch (error) {
+    console.error('Get profile error:', error)
+    res.status(500).json({ error: 'Failed to get profile' })
+  }
+})
+
+/**
+ * Update current user's profile
+ * PUT /api/auth/profile
+ * Headers: Authorization: Bearer <token>
+ * Body: { name?, username?, bio?, image?, phone?, instagram?, facebook?, parentalContact?: [] }
+ */
+router.put('/profile', async (req, res) => {
+  try {
+    await ensureDbInitialized()
+
+    const authHeader = req.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' })
+    }
+
+    const token = authHeader.substring(7)
+    let decoded
+    try {
+      decoded = jwt.verify(token, JWT_SECRET)
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const user = await UserQueries.findById(decoded.userId)
+    if (!user) return res.status(404).json({ error: 'User not found' })
+
+    const { name, username, bio, image, phone, instagram, facebook, parentalContact } = req.body || {}
+
+    // Optionally update user's name if provided
+    if (name && typeof name === 'string') {
+      try {
+        // Minimal update using existing query interface; add an updater if needed
+        // For file store, mutate local object via create/updatePassword pattern is not present; skip for now.
+        if (typeof decoded.userId === 'number' && process.env.NEON_DATABASE_URL) {
+          await pool.query('UPDATE users SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [name, decoded.userId])
+        } else {
+          // no-op for local store name change handled via profile fields response
+        }
+      } catch (e) {
+        // non-fatal
+      }
+    }
+
+    // Upsert profile
+    await ProfileQueries.upsert(decoded.userId, { username, bio, image, phone, instagram, facebook })
+
+    // Update loved ones as parental contacts
+    if (Array.isArray(parentalContact)) {
+      const mapped = (parentalContact || []).slice(0, 2).map(c => ({ name: c.name || '', email: c.email || '', whatsapp: c.phone || '' }))
+      await LovedOnesQueries.create(decoded.userId, mapped)
+    }
+
+    // Return updated profile
+    const profile = await ProfileQueries.findByUserId(decoded.userId)
+    const lovedOnes = await LovedOnesQueries.findByUserId(decoded.userId)
+    res.json({
+      profile: {
+        name: name || user.name,
+        email: user.email,
+        username: profile?.username || '',
+        bio: profile?.bio || '',
+        image: profile?.image || '',
+        phone: profile?.phone || '',
+        instagram: profile?.instagram || '',
+        facebook: profile?.facebook || '',
+        parentalContact: (lovedOnes || []).map(lo => ({ name: lo.name, email: lo.email, phone: lo.whatsapp }))
+      }
+    })
+  } catch (error) {
+    console.error('Update profile error:', error)
+    res.status(500).json({ error: 'Failed to update profile' })
   }
 })
 

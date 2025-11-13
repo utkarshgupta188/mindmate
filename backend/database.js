@@ -17,7 +17,8 @@ const DB_PATH = path.join(__dirname, 'localdb.json')
 // Simple in-memory cache for file-backed DB
 let localStore = {
   users: [], // { id, email, password_hash, name, created_at }
-  loved_ones: [] // { id, user_id, name, email, whatsapp, created_at }
+  loved_ones: [], // { id, user_id, name, email, whatsapp, created_at }
+  profiles: [] // { user_id, username, bio, image, phone, instagram, facebook, updated_at }
 }
 
 let pool = null
@@ -55,6 +56,19 @@ export async function initDatabase() {
       )
     `)
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS profiles (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        username VARCHAR(255),
+        bio TEXT,
+        image TEXT,
+        phone VARCHAR(50),
+        instagram VARCHAR(255),
+        facebook VARCHAR(255),
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_loved_ones_user_id ON loved_ones(user_id)`)
 
@@ -69,7 +83,7 @@ export async function initDatabase() {
     console.log('✅ Loaded local DB from', DB_PATH)
   } catch (err) {
     // file may not exist yet; create it
-    localStore = { users: [], loved_ones: [] }
+    localStore = { users: [], loved_ones: [], profiles: [] }
     await fs.writeFile(DB_PATH, JSON.stringify(localStore, null, 2), 'utf8')
     console.log('✅ Created new local DB at', DB_PATH)
   }
@@ -127,6 +141,19 @@ export const UserQueries = {
       u.password_hash = passwordHash
       await persistLocal()
     }
+  },
+
+  async updateName(userId, name) {
+    if (!name) return
+    if (usingPostgres) {
+      await pool.query('UPDATE users SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [name, userId])
+      return
+    }
+    const u = localStore.users.find(x => Number(x.id) === Number(userId))
+    if (u) {
+      u.name = name
+      await persistLocal()
+    }
   }
 }
 
@@ -173,7 +200,51 @@ export const LovedOnesQueries = {
   }
 }
 
+// Profile queries
+export const ProfileQueries = {
+  async findByUserId(userId) {
+    if (usingPostgres) {
+      const result = await pool.query('SELECT user_id, username, bio, image, phone, instagram, facebook, updated_at FROM profiles WHERE user_id = $1', [userId])
+      return result.rows[0] || null
+    }
+    return localStore.profiles.find(p => Number(p.user_id) === Number(userId)) || null
+  },
+
+  async upsert(userId, data) {
+    const { username = '', bio = '', image = '', phone = '', instagram = '', facebook = '' } = data || {}
+    if (usingPostgres) {
+      const res = await pool.query(
+        `INSERT INTO profiles (user_id, username, bio, image, phone, instagram, facebook)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (user_id) DO UPDATE SET
+           username = EXCLUDED.username,
+           bio = EXCLUDED.bio,
+           image = EXCLUDED.image,
+           phone = EXCLUDED.phone,
+           instagram = EXCLUDED.instagram,
+           facebook = EXCLUDED.facebook,
+           updated_at = CURRENT_TIMESTAMP
+         RETURNING user_id, username, bio, image, phone, instagram, facebook, updated_at`,
+        [userId, username, bio, image, phone, instagram, facebook]
+      )
+      return res.rows[0]
+    }
+    const existing = localStore.profiles.find(p => Number(p.user_id) === Number(userId))
+    const updated = { user_id: Number(userId), username, bio, image, phone, instagram, facebook, updated_at: new Date().toISOString() }
+    if (existing) {
+      Object.assign(existing, updated)
+    } else {
+      localStore.profiles.push(updated)
+    }
+    await persistLocal()
+    return updated
+  }
+}
+
 export { pool }
+export function getDbMode(){
+  return { usingPostgres, DB_PATH }
+}
 export default pool
 
 

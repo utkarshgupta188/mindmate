@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import fetchPkg from 'node-fetch'
 import crypto from 'node:crypto'
 import { XMLParser } from 'fast-xml-parser'
 import { FEEDS } from './feeds.js'
@@ -19,7 +20,8 @@ async function refreshFeeds() {
 
   for (const feeds of Object.values(FEEDS)) {
     for (const { url, category } of feeds) {
-      const task = fetch(url, { headers: { 'User-Agent': 'WellnessApp/1.0 (+https://example.com)' } })
+      const httpFetch = (typeof fetch !== 'undefined' ? fetch : fetchPkg)
+      const task = httpFetch(url, { headers: { 'User-Agent': 'WellnessApp/1.0 (+https://example.com)' } })
         .then(r => r.text())
         .then(xml => {
           const json = parser.parse(xml)

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import BreathingWidget from '../components/BreathingWidget'
 import ReactionGame from '../components/games/ReactionGame'
 import MemoryGame from '../components/games/MemoryGame'
@@ -17,12 +17,7 @@ type TabKey = typeof TABS[number]['key']
 
 export default function Games(){
   const [tab, setTab] = useState<TabKey>('breath')
-  const [overlay, setOverlay] = useState(true)
-
-  useEffect(()=>{
-    const t = setTimeout(()=> setOverlay(false), 4000) // 4-second inhale flash
-    return ()=>clearTimeout(t)
-  }, [])
+  
 
   return (
     <div className="grid lg:grid-cols-[2fr_1fr] gap-6">
@@ -69,15 +64,7 @@ export default function Games(){
         </div>
       </div>
 
-      {overlay && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="text-center text-white">
-            <div className="w-36 h-36 rounded-full border-8 border-white/60 mx-auto mb-4 animate-pulse"></div>
-            <h3 className="text-2xl font-semibold">Inhale…</h3>
-            <p className="text-sm text-white/80">Breathe in gently for 4 seconds</p>
-          </div>
-        </div>
-      )}
+      {/* Breathing preload overlay removed per request */}
     </div>
   )
 }

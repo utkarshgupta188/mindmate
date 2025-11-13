@@ -105,13 +105,30 @@ export function AuthProvider({ children }:{ children: React.ReactNode }){
     try {
       const cred = await signInWithPopup(auth, googleProvider)
       const firebaseUser = cred.user
+      // Exchange Firebase ID token for backend JWT so server persistence works
+      try {
+        const idToken = await firebaseUser.getIdToken(true)
+        const res = await fetch('/api/auth/firebase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        })
+        if (res.ok){
+          const data = await res.json()
+          localStorage.setItem(TOKEN_KEY, data.token)
+          localStorage.setItem(LS_KEY, JSON.stringify({ ...data.user, provider: 'google' }))
+          setUser({ ...data.user, provider: 'google' })
+          return
+        }
+      } catch {}
+
+      // Fallback to local-only session if exchange fails
       const u: User = {
         email: firebaseUser.email || 'unknown-google-user',
         name: firebaseUser.displayName || 'Google User',
         lovedOnes: [],
         provider: 'google'
       }
-      // Note: backend doesn't yet accept Firebase ID tokens, so we only persist local profile.
       setUser(u)
       localStorage.setItem(LS_KEY, JSON.stringify(u))
     } catch (e){
@@ -136,6 +153,23 @@ export function AuthProvider({ children }:{ children: React.ReactNode }){
     try {
       const cred = await signInWithPopup(auth, githubProvider)
       const firebaseUser = cred.user
+      // Exchange Firebase ID token for backend JWT
+      try {
+        const idToken = await firebaseUser.getIdToken(true)
+        const res = await fetch('/api/auth/firebase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        })
+        if (res.ok){
+          const data = await res.json()
+          localStorage.setItem(TOKEN_KEY, data.token)
+          localStorage.setItem(LS_KEY, JSON.stringify({ ...data.user, provider: 'github' }))
+          setUser({ ...data.user, provider: 'github' })
+          return
+        }
+      } catch {}
+
       const u: User = {
         email: firebaseUser.email || 'unknown-github-user',
         name: firebaseUser.displayName || (firebaseUser.email?.split('@')[0] ?? 'GitHub User'),

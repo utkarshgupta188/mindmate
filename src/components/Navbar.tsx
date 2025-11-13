@@ -22,7 +22,7 @@ export default function Navbar() {
           <NavLink className={linkClass} to="/">Home</NavLink>
           <NavLink className={linkClass} to="/motivations">Motivations</NavLink>
           <NavLink className={linkClass} to="/news">News</NavLink>
-          <NavLink className={linkClass} to="/india-help">India Help</NavLink>
+          <NavLink className={linkClass} to="/government-help">Government Help</NavLink>
           <NavLink className={linkClass} to="/games">Games</NavLink>
           <NavLink className={linkClass} to="/reports">Reports</NavLink>
           {user && <>
