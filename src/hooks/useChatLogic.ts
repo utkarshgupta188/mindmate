@@ -2,26 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useRealtimeStress } from './useRealtimeStress'
-import { analyzeSentiment } from '../utils/hfSentiment'
 import { isCrisis } from '../utils/crisis'
-import { chatGemini } from '../utils/gemini'
-import { chatLocal } from '../utils/localLLM'
-import { generateReply } from '../utils/dialogOrchestrator'
-import { decideRoute } from '../utils/coachRouter'
-import { buildSystemPrompt } from '../utils/systemPrompt'
-import { getSafeJoke } from '../utils/jokes'
-import { getMotivation } from '../utils/motivation'
-import { getAsciiBanner } from '../utils/ascii'
-import { analyzeTextEmotion, mapEmotionToVA } from '../utils/hfEmotion'
 import { loadOnboarding, saveOnboarding, type OnboardingAnswers } from '../utils/onboarding'
 import { isMentalHealthRelated } from '../utils/topicGate'
-import { mapEmotionToValenceArousal, DeepfaceEmotion } from '../utils/emotionMap'
-import { humanizeResponse } from '../utils/textPost'
+import { DeepfaceEmotion } from '../utils/emotionMap'
 import { addOrUpdateSession, makeSessionId, summarizeTitle, type ChatSession } from '../utils/chatStore'
 import { generateConversationReport } from '../utils/report'
 import { Msg } from '../components/chat/MessageList'
-import { computeStressValue } from '../utils/stressCalculator'
-import { CRISIS_REGEX, getCrisisResponse, handleExpressionQuery, handleTopicGating } from '../utils/chatHelpers'
+import { CRISIS_REGEX, getCrisisResponse, handleExpressionQuery, handleTopicGating, checkAutoResponse, emitReportStress } from '../utils/chatHelpers'
+import { generateResponse } from '../utils/responseGenerator'
 
 type Pending = { kind: 'typing'; ts: number } | null
 
@@ -65,24 +54,7 @@ export function useChatLogic() {
     useEffect(() => { inputRef.current?.focus() }, [])
 
     useEffect(() => {
-        try {
-            if (!moodTrail.length || !webEmotion?.label) return
-            if (cameraApiHealthy === false) return
-            const negSet = new Set(['sad', 'angry', 'fear', 'disgust'])
-            const lastWindow = moodTrail.slice(-4)
-            const negCount = lastWindow.filter(l => negSet.has(l)).length
-            const now = Date.now()
-            if (negCount >= 2 && webEmotion.confidence && webEmotion.confidence >= 0.55) {
-                if (!lastAutoRespond || (now - lastAutoRespond) > 1000 * 60 * 3) { // 3 minutes cooldown
-                    const base = baseLabel
-                    const concern = `I noticed you might be looking a bit distressed from the camera — I care about how you're doing. Would you like a short grounding exercise or to tell me what's been hardest?`
-                    const encourage = `You're not alone. If you'd like, we can try a 1-minute breathing together or open /games for a guided grounding.`
-                    setMsgs(m => [...m, { from: 'bot', text: `${base}: ${concern}\n\n${encourage}`, ts: Date.now() }])
-                    setLastAutoRespond(now)
-                }
-            }
-        } catch (e) {
-        }
+        checkAutoResponse(moodTrail, webEmotion, cameraApiHealthy, lastAutoRespond, baseLabel, setMsgs, setLastAutoRespond)
     }, [moodTrail, webEmotion, lastAutoRespond, baseLabel, cameraApiHealthy])
 
     async function send(textFromSuggestion?: string) {
@@ -128,89 +100,16 @@ export function useChatLogic() {
                 return
             }
 
-            const withCurrent = [...msgs, currentUserMsg]
-            const lastCoach = withCurrent.slice(-6).map(m => ({ role: (m.from === 'user' ? 'user' : 'bot') as 'user' | 'bot', text: m.text }))
-            const route = decideRoute(text, lastCoach)
-
-            const sent = await analyzeSentiment(text)
-            const conf = typeof (sent as any).confidence === 'number' ? (sent as any).confidence : 0.6
-            const profane = /(fuck|bitch|asshole|bastard|stupid|idiot|madarchod|mc|bc|screw you|shut up)/i.test(text)
-            const hfEmo = await analyzeTextEmotion(text)
-            const va = mapEmotionToVA(hfEmo.label)
-            const arousal = va.arousal
-            const webVA = webEmotion?.label ? mapEmotionToValenceArousal(webEmotion.label) : null
-            const webcamHighNeg = webVA ? (webVA.valence === 'negative' && webVA.arousal === 'high') : false
-            const humorAllowed = !urgentCrisis && !profane && (sent.label !== 'negative' || (conf < 0.65 && arousal !== 'high')) && !webcamHighNeg
-            const motTone = sent.label === 'positive' ? 'energizing' : sent.label === 'negative' ? (conf >= 0.75 ? 'gentle' : 'steady') : 'steady'
-            const mot = getMotivation(motTone as any)
-            const joke = humorAllowed ? await getSafeJoke({ category: sent.label === 'positive' ? 'Programming' : 'Misc' }) : null
-            const banner = (!urgentCrisis && sent.label === 'positive') ? await getAsciiBanner('You got this') : null
-
-            // ===== NEW: compute and emit a stress point for this user message =====
-            try {
-                const stressValue = computeStressValue(sent.label as string | undefined, conf, arousal as string | undefined, webVA, webEmotion?.confidence)
-                // emit realtime stress point
-                emitStress(stressValue)
-            } catch (e) {
-                // don't break flow if emit fails
-                console.warn('emitStress failed', e)
-            }
-            // ===================================================================
-
-            if (route === 'hf') {
-                const planned = await generateReply(text, lastCoach)
-                if (hasGemini || useLocal) {
-                    const system = buildSystemPrompt({ botLabel: base, sentiment: { label: sent.label as any, confidence: conf }, crisis: false, humorAllowed, arousal })
-                    const contextExtras = [
-                        `Context meta: sentiment=${sent.label} confidence=${conf.toFixed(2)} humorAllowed=${humorAllowed}`,
-                        hfEmo.label ? `Emotion (HF): ${hfEmo.label}${(hfEmo.scores?.[0]?.score != null) ? ` (${Math.round((hfEmo.scores![0]!.score) * 100)}%)` : ''}` : '',
-                        onboarding ? `User prefs: goal=${onboarding.goal || 'n/a'} style=${onboarding.style || 'n/a'} humor=${onboarding.humor || 'n/a'} grounding=${onboarding.grounding || 'n/a'}` : '',
-                        webEmotion?.label ? `Observed emotion (webcam): ${webEmotion.label}${webEmotion.confidence ? ` (${Math.round(webEmotion.confidence * 100)}%)` : ''}` : '',
-                        mot ? `Motivation: ${mot}` : '',
-                        joke ? `Joke: ${joke}` : '',
-                        banner ? `Banner:\n${banner}` : ''
-                    ].filter(Boolean).join('\n\n')
-                    try {
-                        const payloadText = `User said: \"${text}\"\n\nPlan suggestions for you to adapt:\n${planned.text}\n\n${contextExtras}\n\nRespond directly to the user in a warm tone.`
-                        const history = withCurrent.slice(-4).map(m => ({ role: (m.from === 'user' ? 'user' : 'model') as 'user' | 'model', text: m.text }))
-                        const humanized = hasGemini
-                            ? await chatGemini(payloadText, history, { system })
-                            : await chatLocal(payloadText, history, { system })
-                        setMsgs(m => [...m, { from: 'bot', text: humanizeResponse(humanized), ts: Date.now() }])
-                    } catch {
-                        setMsgs(m => [...m, { from: 'bot', text: planned.text, ts: Date.now() }])
-                    }
-                } else {
-                    setMsgs(m => [...m, { from: 'bot', text: planned.text, ts: Date.now() }])
-                }
-            } else {
-                if (hasGemini || useLocal) {
-                    try {
-                        const directSystem = buildSystemPrompt({ botLabel: base, sentiment: { label: sent.label as any, confidence: conf }, crisis: false, humorAllowed, arousal })
-                        const context = [
-                            `Context meta: sentiment=${sent.label} confidence=${conf.toFixed(2)} humorAllowed=${humorAllowed}`,
-                            hfEmo.label ? `Emotion (HF): ${hfEmo.label}${(hfEmo.scores?.[0]?.score != null) ? ` (${Math.round((hfEmo.scores![0]!.score) * 100)}%)` : ''}` : '',
-                            onboarding ? `User prefs: goal=${onboarding.goal || 'n/a'} style=${onboarding.style || 'n/a'} humor=${onboarding.humor || 'n/a'} grounding=${onboarding.grounding || 'n/a'}` : '',
-                            webEmotion?.label ? `Observed emotion (webcam): ${webEmotion.label}${webEmotion.confidence ? ` (${Math.round((webEmotion.confidence * 100))}%)` : ''}` : '',
-                            mot ? `Motivation: ${mot}` : '',
-                            joke ? `Joke: ${joke}` : '',
-                            banner ? `Banner:\n${banner}` : '',
-                            `You may suggest opening /games for a 2-minute breathing or grounding exercise when appropriate.`
-                        ].filter(Boolean).join('\n\n')
-                        const history = withCurrent.slice(-6).map(m => ({ role: (m.from === 'user' ? 'user' : 'model') as 'user' | 'model', text: m.text }))
-                        const gReply = hasGemini
-                            ? await chatGemini(`${context}\n\nUser: ${text}`, history, { system: directSystem })
-                            : await chatLocal(`${context}\n\nUser: ${text}`, history, { system: directSystem })
-                        setMsgs(m => [...m, { from: 'bot', text: humanizeResponse(gReply), ts: Date.now() }])
-                    } catch {
-                        const planned = await generateReply(text, lastCoach)
-                        setMsgs(m => [...m, { from: 'bot', text: planned.text, ts: Date.now() }])
-                    }
-                } else {
-                    const planned = await generateReply(text, lastCoach)
-                    setMsgs(m => [...m, { from: 'bot', text: planned.text, ts: Date.now() }])
-                }
-            }
+            const responseText = await generateResponse(
+                text,
+                msgs,
+                currentUserMsg,
+                webEmotion,
+                onboarding,
+                base,
+                emitStress
+            )
+            setMsgs(m => [...m, { from: 'bot', text: responseText, ts: Date.now() }])
 
             if ((/suicid|kill|end it|hopeless|worthless|i'm done|im done|done with life/i.test(text))) {
                 setCrisis(text)
@@ -301,27 +200,7 @@ export function useChatLogic() {
             }
             addOrUpdateSession(session)
 
-            // NEW: if report includes points, emit them so dashboard receives final curve
-            try {
-                if (report?.points && Array.isArray(report.points) && report.points.length) {
-                    for (const p of report.points) {
-                        // emit each stored point
-                        emitStress(p.value)
-                    }
-                } else if (report?.stressLevel) {
-                    // fallback: map label to a single value and emit
-                    const mapLabelToValue = (label?: string) => {
-                        const l = (label || '').toLowerCase()
-                        if (l.includes('high')) return 85
-                        if (l.includes('moderate')) return 60
-                        if (l.includes('low')) return 25
-                        return 50
-                    }
-                    emitStress(mapLabelToValue(report?.stressLevel))
-                }
-            } catch (e) {
-                console.warn('emit final report points failed', e)
-            }
+            emitReportStress(report, emitStress)
 
             // Navigate to Reports page
             navigate('/reports')

@@ -65,3 +65,58 @@ export async function handleTopicGating(
     setMsgs(m => [...m, { from: 'bot', text: boundary, ts: Date.now() }])
     return true
 }
+
+export function checkAutoResponse(
+    moodTrail: string[],
+    webEmotion: { label?: string; confidence?: number } | null,
+    cameraApiHealthy: boolean | null,
+    lastAutoRespond: number | null,
+    baseLabel: string,
+    setMsgs: React.Dispatch<React.SetStateAction<Msg[]>>,
+    setLastAutoRespond: React.Dispatch<React.SetStateAction<number | null>>
+) {
+    try {
+        if (!moodTrail.length || !webEmotion?.label) return
+        if (cameraApiHealthy === false) return
+        const negSet = new Set(['sad', 'angry', 'fear', 'disgust'])
+        const lastWindow = moodTrail.slice(-4)
+        const negCount = lastWindow.filter(l => negSet.has(l)).length
+        const now = Date.now()
+        if (negCount >= 2 && webEmotion.confidence && webEmotion.confidence >= 0.55) {
+            if (!lastAutoRespond || (now - lastAutoRespond) > 1000 * 60 * 3) { // 3 minutes cooldown
+                const base = baseLabel
+                const concern = `I noticed you might be looking a bit distressed from the camera — I care about how you're doing. Would you like a short grounding exercise or to tell me what's been hardest?`
+                const encourage = `You're not alone. If you'd like, we can try a 1-minute breathing together or open /games for a guided grounding.`
+                setMsgs(m => [...m, { from: 'bot', text: `${base}: ${concern}\n\n${encourage}`, ts: Date.now() }])
+                setLastAutoRespond(now)
+            }
+        }
+    } catch (e) {
+    }
+}
+
+export function emitReportStress(
+    report: any,
+    emitStress: (val: number) => void
+) {
+    try {
+        if (report?.points && Array.isArray(report.points) && report.points.length) {
+            for (const p of report.points) {
+                // emit each stored point
+                emitStress(p.value)
+            }
+        } else if (report?.stressLevel) {
+            // fallback: map label to a single value and emit
+            const mapLabelToValue = (label?: string) => {
+                const l = (label || '').toLowerCase()
+                if (l.includes('high')) return 85
+                if (l.includes('moderate')) return 60
+                if (l.includes('low')) return 25
+                return 50
+            }
+            emitStress(mapLabelToValue(report?.stressLevel))
+        }
+    } catch (e) {
+        console.warn('emit final report points failed', e)
+    }
+}
