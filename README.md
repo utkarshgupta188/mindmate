@@ -208,9 +208,6 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
   - Integration with more mental health resources.
   - Enhanced chatbot capabilities.
   - Improved real-time data processing.
-- **Known Issues**:
-  - [Issue 1](https://github.com/utkarshgupta188/mindmate/issues/1)
-  - [Issue 2](https://github.com/utkarshgupta188/mindmate/issues/2)
 - **Future Improvements**:
   - Better integration with external APIs.
   - Enhanced user interface and experience.
