@@ -20,6 +20,8 @@ import { humanizeResponse } from '../utils/textPost'
 import { addOrUpdateSession, makeSessionId, summarizeTitle, type ChatSession } from '../utils/chatStore'
 import { generateConversationReport } from '../utils/report'
 import { Msg } from '../components/chat/MessageList'
+import { computeStressValue } from '../utils/stressCalculator'
+import { CRISIS_REGEX, getCrisisResponse, handleExpressionQuery, handleTopicGating } from '../utils/chatHelpers'
 
 type Pending = { kind: 'typing'; ts: number } | null
 
@@ -83,38 +85,6 @@ export function useChatLogic() {
         }
     }, [moodTrail, webEmotion, lastAutoRespond, baseLabel, cameraApiHealthy])
 
-    // Helper: compute stress value (0-100) from multiple signals
-    function computeStressValue(sentLabel: string | undefined, sentConf: number | undefined, arousal: string | undefined, webVA: { valence?: string; arousal?: string } | null, webConf?: number) {
-        // base neutral
-        let score = 50
-
-        // sentiment
-        if (sentLabel === 'negative') score += 20
-        if (sentLabel === 'positive') score -= 10
-
-        // confidence amplifies
-        const conf = typeof sentConf === 'number' ? sentConf : 0.6
-        score = score * (1 + (conf - 0.5) * 0.4) // small amplification
-
-        // arousal (text)
-        if (arousal === 'high') score += 15
-        if (arousal === 'low') score -= 8
-
-        // webcam valence/arousal adds signal
-        if (webVA) {
-            if (webVA.valence === 'negative') score += 12
-            if (webVA.arousal === 'high') score += 10
-            if (webVA.valence === 'positive') score -= 8
-        }
-
-        // webcam confidence dampens/strengthens
-        if (webConf) score = score * (1 + Math.min(0.25, (webConf - 0.5) * 0.5))
-
-        // clamp
-        score = Math.max(0, Math.min(100, Math.round(score)))
-        return score
-    }
-
     async function send(textFromSuggestion?: string) {
         if (!onboarding) return
         const raw = typeof textFromSuggestion === 'string' ? textFromSuggestion : input
@@ -131,62 +101,37 @@ export function useChatLogic() {
         setPending({ kind: 'typing', ts: Date.now() })
         try {
             const base = baseLabel
-            const crisisRegex = /(suicid|kill myself|end my life|want to die|i want to die|i will kill myself|i am going to kill myself|self[- ]?harm|cut myself|jump off|can'?t go on|ending it|end it all|life isn'?t worth)/i
-            const urgentCrisis = isCrisis(text) || crisisRegex.test(text)
+            const urgentCrisis = isCrisis(text) || CRISIS_REGEX.test(text)
+
             if (urgentCrisis) {
-                const reply = [
-                    `${base}: I'm taking what you said very seriously. It sounds like you're in a lot of pain, and I'm genuinely worried about you.`,
-                    `Your safety is the most important thing. You are not alone, and there are people who can help you right now.`,
-                    `Please reach out to one of these 24/7, free resources in India (call or text):`,
-                    `• Emergency — Call 112`,
-                    `• KIRAN Mental Health Helpline — 1800-599-0019 (24×7, toll-free)`,
-                    `• AASRA — +91-22-27546669 (24×7)`,
-                    `• Vandrevala Foundation — +91-9999-666-555`,
-                    `If any number doesn’t connect, please try again or search “India suicide helpline” for the latest options. I’m still here with you.`,
-                ].join('\n\n')
+                const reply = getCrisisResponse(base)
                 setMsgs(m => [...m, { from: 'bot', text: reply, ts: Date.now() }])
                 setCrisis(text)
                 return
             }
-            const withCurrent = [...msgs, currentUserMsg]
-            const lastCoach = withCurrent.slice(-6).map(m => ({ role: (m.from === 'user' ? 'user' : 'bot') as 'user' | 'bot', text: m.text }))
-            const route = decideRoute(text, lastCoach)
+
+            if (handleExpressionQuery(text, base, webEmotion, setMsgs)) return
+
             const hasGemini = !!(import.meta as any).env?.VITE_GEMINI_API_KEY
             const useLocal = ((import.meta as any).env?.VITE_LOCAL_LLM === 'true') || !!(import.meta as any).env?.VITE_LOCAL_LLM_PATH
-            if (/\b(what'?s|whats) my expression\b|\bmy expression\b/i.test(text)) {
-                if (webEmotion?.label) {
-                    const pct = webEmotion.confidence ? ` (${Math.round(webEmotion.confidence * 100)}%)` : ''
-                    setMsgs(m => [...m, { from: 'bot', text: `${base}: From the webcam, I’m seeing "${webEmotion.label}"${pct}. You can turn tracking off anytime from the header.`, ts: Date.now() }])
-                } else {
-                    setMsgs(m => [...m, { from: 'bot', text: `${base}: I don’t have a recent webcam reading. If you allow camera access (top-right) and keep the window in view, I can estimate expressions on-device.`, ts: Date.now() }])
-                }
-                return
-            }
+
             if (!isMentalHealthRelated(text)) {
-                const boundary = [
-                    `${base}: I’m here to support mental wellbeing—feelings, stress, sleep, motivation, and coping.`,
-                    `I can’t help with that topic, but if you’d like, tell me how you’re feeling right now or what’s been hardest today.`
-                ].join('\n\n')
                 const lastBot = msgs.slice().reverse().find(m => m.from === 'bot')
+                const boundary = `${base}: I’m here to support mental wellbeing—feelings, stress, sleep, motivation, and coping.\n\nI can’t help with that topic, but if you’d like, tell me how you’re feeling right now or what’s been hardest today.`
+
                 if (lastBot && lastBot.text?.trim() === boundary.trim()) {
                     setMsgs(m => [...m, { from: 'bot', text: `${base}: Okay — I hear you. I’m here if you want to talk later.`, ts: Date.now() }])
                     return
                 }
-                if (hasGemini || useLocal) {
-                    try {
-                        const system = buildSystemPrompt({ botLabel: base, sentiment: { label: 'neutral' as any, confidence: 0.95 }, crisis: false, humorAllowed: false, arousal: 'low' as any })
-                        const prompt = `Rephrase the following concise, firm but friendly boundary message so it sounds warm and human, without adding new instructions or resources. Keep it short:\n\n${boundary}`
-                        const humanized = hasGemini
-                            ? await chatGemini(prompt, [], { system })
-                            : await chatLocal(prompt, [], { system })
-                        setMsgs(m => [...m, { from: 'bot', text: humanizeResponse(humanized || boundary), ts: Date.now() }])
-                        return
-                    } catch (e) {
-                    }
-                }
-                setMsgs(m => [...m, { from: 'bot', text: boundary, ts: Date.now() }])
+
+                await handleTopicGating(text, base, hasGemini, useLocal, setMsgs)
                 return
             }
+
+            const withCurrent = [...msgs, currentUserMsg]
+            const lastCoach = withCurrent.slice(-6).map(m => ({ role: (m.from === 'user' ? 'user' : 'bot') as 'user' | 'bot', text: m.text }))
+            const route = decideRoute(text, lastCoach)
+
             const sent = await analyzeSentiment(text)
             const conf = typeof (sent as any).confidence === 'number' ? (sent as any).confidence : 0.6
             const profane = /(fuck|bitch|asshole|bastard|stupid|idiot|madarchod|mc|bc|screw you|shut up)/i.test(text)
