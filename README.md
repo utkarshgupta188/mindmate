@@ -194,9 +194,9 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## 👥 Authors & Contributors
 - **Maintainers**:
-  - [Your Name](https://github.com/utkarshgupta188)
+  - [Utkarsh Gupta](https://github.com/utkarshgupta188)
 - **Contributors**:
-  - [Contributor 1](https://github.com/ishaanyk)
+  - [Ishaan Sen](https://github.com/ishaanyk)
 
 ## 🐛 Issues & Support
 - **Reporting Issues**: Please open an issue on the GitHub repository.
