@@ -27,6 +27,30 @@ function generateToken(userId, email) {
   return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '7d' })
 }
 
+// Middleware to authenticate token
+async function authenticateToken(req, res, next) {
+  try {
+    await ensureDbInitialized()
+
+    const authHeader = req.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' })
+    }
+
+    const token = authHeader.substring(7)
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET)
+      req.user = decoded
+      next()
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+  } catch (error) {
+    console.error('Auth middleware error:', error)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
 /**
  * Exchange Firebase ID token (Google/GitHub login) for backend JWT
  * POST /api/auth/firebase
@@ -215,27 +239,10 @@ router.post('/login', async (req, res) => {
  * GET /api/auth/me
  * Headers: Authorization: Bearer <token>
  */
-router.get('/me', async (req, res) => {
+router.get('/me', authenticateToken, async (req, res) => {
   try {
-    await ensureDbInitialized()
-
-    const authHeader = req.headers.authorization
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' })
-    }
-
-    const token = authHeader.substring(7) // Remove 'Bearer ' prefix
-
-    // Verify token
-    let decoded
-    try {
-      decoded = jwt.verify(token, JWT_SECRET)
-    } catch (error) {
-      return res.status(401).json({ error: 'Invalid or expired token' })
-    }
-
     // Get user from database
-    const user = await UserQueries.findById(decoded.userId)
+    const user = await UserQueries.findById(req.user.userId)
     if (!user) {
       return res.status(404).json({ error: 'User not found' })
     }
@@ -267,30 +274,15 @@ router.get('/me', async (req, res) => {
  * Headers: Authorization: Bearer <token>
  * Body: { lovedOnes: [] }
  */
-router.put('/loved-ones', async (req, res) => {
+router.put('/loved-ones', authenticateToken, async (req, res) => {
   try {
-    await ensureDbInitialized()
-
-    const authHeader = req.headers.authorization
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' })
-    }
-
-    const token = authHeader.substring(7)
-    let decoded
-    try {
-      decoded = jwt.verify(token, JWT_SECRET)
-    } catch (error) {
-      return res.status(401).json({ error: 'Invalid or expired token' })
-    }
-
     const { lovedOnes } = req.body
 
     // Update loved ones
-    await LovedOnesQueries.create(decoded.userId, lovedOnes || [])
+    await LovedOnesQueries.create(req.user.userId, lovedOnes || [])
 
     // Fetch updated loved ones
-    const updatedLovedOnes = await LovedOnesQueries.findByUserId(decoded.userId)
+    const updatedLovedOnes = await LovedOnesQueries.findByUserId(req.user.userId)
 
     res.json({
       lovedOnes: updatedLovedOnes.map(lo => ({
@@ -310,28 +302,13 @@ router.put('/loved-ones', async (req, res) => {
  * GET /api/auth/profile
  * Headers: Authorization: Bearer <token>
  */
-router.get('/profile', async (req, res) => {
+router.get('/profile', authenticateToken, async (req, res) => {
   try {
-    await ensureDbInitialized()
-
-    const authHeader = req.headers.authorization
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' })
-    }
-
-    const token = authHeader.substring(7)
-    let decoded
-    try {
-      decoded = jwt.verify(token, JWT_SECRET)
-    } catch (error) {
-      return res.status(401).json({ error: 'Invalid or expired token' })
-    }
-
-    const user = await UserQueries.findById(decoded.userId)
+    const user = await UserQueries.findById(req.user.userId)
     if (!user) return res.status(404).json({ error: 'User not found' })
 
-    const profile = await ProfileQueries.findByUserId(decoded.userId)
-    const lovedOnes = await LovedOnesQueries.findByUserId(decoded.userId)
+    const profile = await ProfileQueries.findByUserId(req.user.userId)
+    const lovedOnes = await LovedOnesQueries.findByUserId(req.user.userId)
 
     res.json({
       profile: {
@@ -358,24 +335,9 @@ router.get('/profile', async (req, res) => {
  * Headers: Authorization: Bearer <token>
  * Body: { name?, username?, bio?, image?, phone?, instagram?, facebook?, parentalContact?: [] }
  */
-router.put('/profile', async (req, res) => {
+router.put('/profile', authenticateToken, async (req, res) => {
   try {
-    await ensureDbInitialized()
-
-    const authHeader = req.headers.authorization
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' })
-    }
-
-    const token = authHeader.substring(7)
-    let decoded
-    try {
-      decoded = jwt.verify(token, JWT_SECRET)
-    } catch (error) {
-      return res.status(401).json({ error: 'Invalid or expired token' })
-    }
-
-    const user = await UserQueries.findById(decoded.userId)
+    const user = await UserQueries.findById(req.user.userId)
     if (!user) return res.status(404).json({ error: 'User not found' })
 
     const { name, username, bio, image, phone, instagram, facebook, parentalContact } = req.body || {}
@@ -385,8 +347,8 @@ router.put('/profile', async (req, res) => {
       try {
         // Minimal update using existing query interface; add an updater if needed
         // For file store, mutate local object via create/updatePassword pattern is not present; skip for now.
-        if (typeof decoded.userId === 'number' && process.env.NEON_DATABASE_URL) {
-          await pool.query('UPDATE users SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [name, decoded.userId])
+        if (typeof req.user.userId === 'number' && process.env.NEON_DATABASE_URL) {
+          await pool.query('UPDATE users SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [name, req.user.userId])
         } else {
           // no-op for local store name change handled via profile fields response
         }
@@ -396,17 +358,17 @@ router.put('/profile', async (req, res) => {
     }
 
     // Upsert profile
-    await ProfileQueries.upsert(decoded.userId, { username, bio, image, phone, instagram, facebook })
+    await ProfileQueries.upsert(req.user.userId, { username, bio, image, phone, instagram, facebook })
 
     // Update loved ones as parental contacts
     if (Array.isArray(parentalContact)) {
       const mapped = (parentalContact || []).slice(0, 2).map(c => ({ name: c.name || '', email: c.email || '', whatsapp: c.phone || '' }))
-      await LovedOnesQueries.create(decoded.userId, mapped)
+      await LovedOnesQueries.create(req.user.userId, mapped)
     }
 
     // Return updated profile
-    const profile = await ProfileQueries.findByUserId(decoded.userId)
-    const lovedOnes = await LovedOnesQueries.findByUserId(decoded.userId)
+    const profile = await ProfileQueries.findByUserId(req.user.userId)
+    const lovedOnes = await LovedOnesQueries.findByUserId(req.user.userId)
     res.json({
       profile: {
         name: name || user.name,

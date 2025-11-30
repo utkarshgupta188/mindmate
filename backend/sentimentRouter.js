@@ -20,44 +20,7 @@ router.post('/analyze', async (req, res) => {
       return res.status(400).json({ error: 'Text is required' })
     }
 
-    // Call Gradio API - Try /run/predict first (standard Gradio HTTP API)
-    // If that fails, try /api/predict (alternative format)
-    let response
-    try {
-      response = await fetch(`${GRADIO_URL}/run/predict`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          data: [text]  // Single text input to the predict function
-        })
-      })
-      
-      // If 404, try alternative endpoint
-      if (response.status === 404) {
-        response = await fetch(`${GRADIO_URL}/api/predict`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            data: [text],
-            api_name: '/predict'
-          })
-        })
-      }
-    } catch (fetchError) {
-      // If fetch fails, try alternative endpoint
-      try {
-        response = await fetch(`${GRADIO_URL}/api/predict`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            data: [text],
-            api_name: '/predict'
-          })
-        })
-      } catch (retryError) {
-        throw new Error(`Gradio API unavailable: ${fetchError.message}`)
-      }
-    }
+    const response = await callGradioApi(text)
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error')
@@ -71,15 +34,15 @@ router.post('/analyze', async (req, res) => {
     }
 
     const result = await response.json()
-    
+
     console.log('Gradio API response for:', text.substring(0, 50), 'Result:', JSON.stringify(result))
-    
+
     // Gradio returns data in format: { data: [prediction] }
     // The prediction could be a string or object
     let sentimentLabel = 'neutral'
     if (result.data && result.data.length > 0) {
       const prediction = result.data[0]
-      
+
       // Handle string response (e.g., "positive", "negative", "neutral")
       if (typeof prediction === 'string') {
         const lower = prediction.toLowerCase().trim()
@@ -90,20 +53,20 @@ router.post('/analyze', async (req, res) => {
         } else if (lower.includes('neutral') || lower === 'neu') {
           sentimentLabel = 'neutral'
         }
-      } 
+      }
       // Handle object response (e.g., { label: "positive", confidence: 0.95 })
       else if (typeof prediction === 'object' && prediction !== null) {
         if (prediction.label) {
           const label = String(prediction.label).toLowerCase()
-          sentimentLabel = label.includes('negative') ? 'negative' : 
-                          label.includes('positive') ? 'positive' : 'neutral'
+          sentimentLabel = label.includes('negative') ? 'negative' :
+            label.includes('positive') ? 'positive' : 'neutral'
         } else if (prediction.sentiment) {
           const label = String(prediction.sentiment).toLowerCase()
-          sentimentLabel = label.includes('negative') ? 'negative' : 
-                          label.includes('positive') ? 'positive' : 'neutral'
+          sentimentLabel = label.includes('negative') ? 'negative' :
+            label.includes('positive') ? 'positive' : 'neutral'
         }
       }
-      
+
       console.log('Parsed sentiment from Gradio:', sentimentLabel)
     } else {
       console.warn('Unexpected Gradio response format:', result)
@@ -135,13 +98,13 @@ router.post('/analyze', async (req, res) => {
 router.post('/chat/respond', async (req, res) => {
   try {
     const { text, sentiment, botName = 'adem' } = req.body
-    
+
     if (!text) {
       return res.status(400).json({ error: 'Text is required' })
     }
 
     const geminiApiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY
-    
+
     if (!geminiApiKey || geminiApiKey === 'your_gemini_api_key_here') {
       // Return fallback response if Gemini not configured
       return res.json({
@@ -153,7 +116,7 @@ router.post('/chat/respond', async (req, res) => {
     // Build prompt based on sentiment
     const base = botName === 'adem' ? '🧠 Adem' : '🌿 Eve'
     let prompt = ''
-    
+
     if (sentiment === 'negative') {
       prompt = `You are ${base}, a compassionate mental wellness assistant. The user said: "${text}". They seem to be feeling down. Respond with empathy and support. Keep your response under 100 words, be caring, and offer helpful suggestions. Use natural, conversational language with appropriate emojis.`
     } else if (sentiment === 'positive') {
@@ -180,8 +143,8 @@ router.post('/chat/respond', async (req, res) => {
     }
 
     const geminiData = await geminiResponse.json()
-    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 
-                       getFallbackResponse(text, sentiment, botName)
+    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ||
+      getFallbackResponse(text, sentiment, botName)
 
     res.json({
       response: responseText.trim(),
@@ -201,34 +164,79 @@ router.post('/chat/respond', async (req, res) => {
 // Fallback sentiment analysis (keyword-based)
 function fallbackSentiment(text) {
   const t = text.toLowerCase()
-  
+
   // CRISIS WORDS - These should trigger immediate crisis response
   const CRISIS = ['suicide', 'kill myself', 'end my life', 'want to die', 'wanna die',
     "don't want to live", "dont want to live", 'dying', 'im dying', "i'm dying",
     'end it all', 'give up', 'hurt myself', 'take my life', 'wish i was dead']
-  
+
   // Check for crisis words first
   for (const word of CRISIS) {
     if (t.includes(word)) {
       return 'negative' // Return negative but crisis detection should catch this first
     }
   }
-  
-  const NEG = ['sad','depressed','anxious','stress','tired','angry','bad','hate','worthless','hopeless','awful','terrible','upset','hurt','pain','lonely','worried','overwhelmed','miserable','unhappy','not okay','not feeling','not good']
-  const POS = ['happy','calm','excited','love','grateful','hopeful','proud','good','joy','great','wonderful','amazing','delighted','thrilled','peaceful','content','confident','energetic','bright','cheerful']
-  
+
+  const NEG = ['sad', 'depressed', 'anxious', 'stress', 'tired', 'angry', 'bad', 'hate', 'worthless', 'hopeless', 'awful', 'terrible', 'upset', 'hurt', 'pain', 'lonely', 'worried', 'overwhelmed', 'miserable', 'unhappy', 'not okay', 'not feeling', 'not good']
+  const POS = ['happy', 'calm', 'excited', 'love', 'grateful', 'hopeful', 'proud', 'good', 'joy', 'great', 'wonderful', 'amazing', 'delighted', 'thrilled', 'peaceful', 'content', 'confident', 'energetic', 'bright', 'cheerful']
+
   let score = 0
   NEG.forEach(w => { if (t.includes(w)) score -= 1 })
   POS.forEach(w => { if (t.includes(w)) score += 1 })
-  
+
   return score > 0 ? 'positive' : score < 0 ? 'negative' : 'neutral'
 }
 
 // Fallback response generator
+/**
+ * Helper to call Gradio API with fallback endpoints
+ */
+async function callGradioApi(text) {
+  // Try /run/predict first (standard Gradio HTTP API)
+  try {
+    const response = await fetch(`${GRADIO_URL}/run/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        data: [text]
+      })
+    })
+
+    if (response.ok) return response
+
+    // If 404, try alternative endpoint
+    if (response.status === 404) {
+      return await fetch(`${GRADIO_URL}/api/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: [text],
+          api_name: '/predict'
+        })
+      })
+    }
+    return response
+  } catch (error) {
+    // If fetch fails, try alternative endpoint
+    try {
+      return await fetch(`${GRADIO_URL}/api/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: [text],
+          api_name: '/predict'
+        })
+      })
+    } catch (retryError) {
+      throw new Error(`Gradio API unavailable: ${error.message}`)
+    }
+  }
+}
+
 function getFallbackResponse(text, sentiment, botName) {
   const base = botName === 'adem' ? '🧠 Adem' : '🌿 Eve'
   const lowerText = text.toLowerCase()
-  
+
   if (sentiment === 'negative') {
     if (lowerText.includes('sad') || lowerText.includes('depressed') || lowerText.includes('down')) {
       return `${base}: I'm really sorry you're feeling this way. It takes courage to share your feelings. I'm here to listen and support you. 💙`
@@ -238,11 +246,11 @@ function getFallbackResponse(text, sentiment, botName) {
     }
     return `${base}: I hear you. That sounds heavy. Want to try a 3-minute breathing exercise together? You're not alone.`
   }
-  
+
   if (sentiment === 'positive') {
     return `${base}: Love that! What helped today? Let's note one thing to repeat tomorrow. ✨`
   }
-  
+
   return `${base}: I'm with you. Tell me a bit more about what's on your mind. 🌸`
 }
 

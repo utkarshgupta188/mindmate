@@ -7,4 +7,5 @@ backend/localdb.json
 yolo-server/*.pt
 yolo-server/*.pth
 yolo-server/*.onnx
-yolo-server/weights/
+yolo-server/weights
+dist
